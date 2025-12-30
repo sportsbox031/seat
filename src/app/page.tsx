@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import type { Event, Guest } from "@/types";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
@@ -11,7 +12,7 @@ import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, D
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Plus, Calendar, MapPin, Users, Trash2 } from "lucide-react";
+import { Plus, Calendar, MapPin, Users, Trash2, Loader2 } from "lucide-react";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 
 export default function EventListPage() {
@@ -49,8 +50,16 @@ export default function EventListPage() {
       if (!response.ok) throw new Error('Failed to create event');
       return response.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      toast.success('행사가 등록되었습니다', {
+        description: variables.title,
+      });
+    },
+    onError: (error: Error) => {
+      toast.error('행사 등록 실패', {
+        description: error.message,
+      });
     },
   });
 
@@ -65,6 +74,12 @@ export default function EventListPage() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['events'] });
+      toast.success('행사가 삭제되었습니다');
+    },
+    onError: (error: Error) => {
+      toast.error('행사 삭제 실패', {
+        description: error.message,
+      });
     },
   });
 
@@ -88,12 +103,42 @@ export default function EventListPage() {
   });
 
   const handleCreateEvent = () => {
+    // 필수 필드 검증
+    if (!newEvent.title?.trim() || !newEvent.date || !newEvent.location?.trim()) {
+      toast.error('필수 항목을 입력해주세요', {
+        description: '행사명, 일시, 장소는 필수 입력 항목입니다.',
+      });
+      return;
+    }
+
+    // 날짜 유효성 검증
+    const eventDate = new Date(newEvent.date);
+    if (isNaN(eventDate.getTime())) {
+      toast.error('올바르지 않은 날짜', {
+        description: '유효한 날짜를 선택해주세요.',
+      });
+      return;
+    }
+
+    // 중복 체크 (같은 제목 + 같은 날짜)
+    const isDuplicate = events.some(
+      (e) => e.title.trim() === newEvent.title.trim() &&
+             new Date(e.date).toDateString() === eventDate.toDateString()
+    );
+
+    if (isDuplicate) {
+      toast.error('중복된 행사', {
+        description: '같은 날짜에 동일한 행사명이 이미 존재합니다.',
+      });
+      return;
+    }
+
     const event: Event = {
       id: `event-${Date.now()}`,
-      title: newEvent.title,
-      date: new Date(newEvent.date).toISOString(),
-      location: newEvent.location,
-      description: newEvent.description,
+      title: newEvent.title.trim(),
+      date: eventDate.toISOString(),
+      location: newEvent.location.trim(),
+      description: newEvent.description?.trim() || '',
       status: "upcoming",
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),
@@ -109,12 +154,30 @@ export default function EventListPage() {
   };
 
   const handleDeleteEvent = (eventId: string) => {
+    // 삭제될 행사 정보 백업 (실행 취소용)
+    const deletedEvent = events.find(e => e.id === eventId);
+    if (!deletedEvent) return;
+
+    // 로컬 상태 업데이트 (optimistic update)
+    setEvents(events.filter(e => e.id !== eventId));
+    setDeleteEventId(null);
+
     // Google Sheets에서 삭제
     deleteEventMutation.mutate(eventId);
 
-    // 로컬 상태도 업데이트 (optimistic update)
-    setEvents(events.filter(e => e.id !== eventId));
-    setDeleteEventId(null);
+    // 실행 취소 가능한 Toast (행사만 복구 가능, 내빈은 복구 불가)
+    toast.success(`${deletedEvent.title} 행사가 삭제되었습니다`, {
+      description: '⚠️ 관련 내빈 정보는 복구되지 않습니다',
+      action: {
+        label: "행사만 복구",
+        onClick: () => {
+          createEventMutation.mutate(deletedEvent);
+          setEvents([deletedEvent, ...events]);
+          toast.info('행사가 복구되었습니다 (내빈 정보는 별도로 추가해야 합니다)');
+        },
+      },
+      duration: 8000, // 8초간 실행 취소 가능
+    });
   };
 
   const getEventGuestCount = (eventId: string) => {
@@ -135,22 +198,23 @@ export default function EventListPage() {
     <div className="min-h-screen bg-slate-50">
       {/* Header */}
       <header className="bg-white border-b sticky top-0 z-10 shadow-sm">
-        <div className="max-w-7xl mx-auto px-6 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-bold text-primary tracking-tight">G-Protocol</h1>
-              <p className="text-sm text-slate-600 mt-1">경기도 스마트 의전 시스템</p>
+        <div className="max-w-7xl mx-auto px-4 sm:px-6 py-3 sm:py-4">
+          <div className="flex items-center justify-between gap-4">
+            <div className="min-w-0 flex-1">
+              <h1 className="text-xl sm:text-2xl font-bold text-primary tracking-tight truncate">G-Protocol</h1>
+              <p className="text-xs sm:text-sm text-slate-600 mt-0.5 sm:mt-1 hidden sm:block">경기도 스마트 의전 시스템</p>
             </div>
-            <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-2">
+            <Button onClick={() => setIsCreateDialogOpen(true)} className="gap-1 sm:gap-2 flex-shrink-0" size="sm">
               <Plus className="w-4 h-4" />
-              행사 등록
+              <span className="hidden sm:inline">행사 등록</span>
+              <span className="sm:hidden">등록</span>
             </Button>
           </div>
         </div>
       </header>
 
       {/* Main Content */}
-      <main className="max-w-7xl mx-auto px-6 py-8">
+      <main className="max-w-7xl mx-auto px-4 sm:px-6 py-4 sm:py-8">
         <div className="mb-6">
           <h2 className="text-xl font-bold text-slate-900">행사 목록</h2>
           <p className="text-sm text-slate-600 mt-1">
@@ -180,7 +244,7 @@ export default function EventListPage() {
             </Button>
           </div>
         ) : (
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
             {events.map((event) => (
               <Card
                 key={event.id}
@@ -303,9 +367,16 @@ export default function EventListPage() {
             </Button>
             <Button
               onClick={handleCreateEvent}
-              disabled={!newEvent.title || !newEvent.date || !newEvent.location}
+              disabled={!newEvent.title || !newEvent.date || !newEvent.location || createEventMutation.isPending}
             >
-              등록
+              {createEventMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  등록 중...
+                </>
+              ) : (
+                '등록'
+              )}
             </Button>
           </DialogFooter>
         </DialogContent>
@@ -334,8 +405,16 @@ export default function EventListPage() {
             <AlertDialogAction
               onClick={() => deleteEventId && handleDeleteEvent(deleteEventId)}
               className="bg-red-600 hover:bg-red-700"
+              disabled={deleteEventMutation.isPending}
             >
-              삭제
+              {deleteEventMutation.isPending ? (
+                <>
+                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  삭제 중...
+                </>
+              ) : (
+                '삭제'
+              )}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

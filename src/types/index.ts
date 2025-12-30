@@ -8,6 +8,10 @@ export interface Event {
     location: string;
     description?: string;
     status: "upcoming" | "ongoing" | "completed";
+    seatLayout?: {
+        rows: number;
+        cols: number;
+    }; // 좌석 배치도 설정
     createdAt: string;
     updatedAt: string;
 }

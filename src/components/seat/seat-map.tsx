@@ -31,11 +31,13 @@ interface SeatMapProps {
     onDeleteGuest: (guestId: string) => void;
     draggedGuest: Guest | null;
     importedGridSize?: { rows: number; cols: number; rowLabels: string[] } | null;
+    seatLayout?: { rows: number; cols: number } | null;
+    onSeatLayoutChange?: (layout: { rows: number; cols: number }) => void;
 }
 
-export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGuest, onDeleteGuest, draggedGuest, importedGridSize }: SeatMapProps) {
-    const [rows, setRows] = useState(10);
-    const [cols, setCols] = useState(15);
+export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGuest, onDeleteGuest, draggedGuest, importedGridSize, seatLayout, onSeatLayoutChange }: SeatMapProps) {
+    const [rows, setRows] = useState(seatLayout?.rows || 1);
+    const [cols, setCols] = useState(seatLayout?.cols || 1);
     const [seats, setSeats] = useState<TheaterSeat[]>([]);
     const [selectedSeat, setSelectedSeat] = useState<TheaterSeat | null>(null);
     const [isAssignDialogOpen, setIsAssignDialogOpen] = useState(false);
@@ -47,6 +49,32 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
     const [isProtocolModalOpen, setIsProtocolModalOpen] = useState(false);
     const [isEditModalOpen, setIsEditModalOpen] = useState(false);
     const [guestToEdit, setGuestToEdit] = useState<Guest | null>(null);
+
+    // seatLayout prop 변경 시 rows, cols 동기화 및 좌석 생성
+    useEffect(() => {
+        if (seatLayout && seatLayout.rows > 0 && seatLayout.cols > 0) {
+            setRows(seatLayout.rows);
+            setCols(seatLayout.cols);
+            // 좌석 자동 생성
+            generateSeats(seatLayout.rows, seatLayout.cols);
+        }
+    }, [seatLayout]);
+
+    // guests prop 변경 시 selectedGuest와 guestToEdit 동기화
+    useEffect(() => {
+        if (selectedGuest) {
+            const updatedGuest = guests.find(g => g.id === selectedGuest.id);
+            if (updatedGuest) {
+                setSelectedGuest(updatedGuest);
+            }
+        }
+        if (guestToEdit) {
+            const updatedGuest = guests.find(g => g.id === guestToEdit.id);
+            if (updatedGuest) {
+                setGuestToEdit(updatedGuest);
+            }
+        }
+    }, [guests]);
 
     // importedGridSize prop 변경 시 자동으로 그리드 생성
     useEffect(() => {
@@ -142,6 +170,10 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
 
     const handleApplyLayout = () => {
         generateSeats(rows, cols);
+        // 좌석 배치도 설정을 부모 컴포넌트로 전달 (Google Sheets 저장용)
+        if (onSeatLayoutChange) {
+            onSeatLayoutChange({ rows, cols });
+        }
     };
 
     const getSeatGuest = (seat: TheaterSeat) => {
@@ -244,7 +276,7 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
     };
 
     return (
-        <div className="h-full w-full relative bg-slate-100 overflow-auto">
+        <div className="h-full w-full relative overflow-auto bg-slate-100">
             {/* Stats Overlay */}
             <div className="absolute top-4 right-4 z-10 flex flex-col gap-2 w-64">
                 <Card className="shadow-lg border-none bg-white/90 backdrop-blur">
@@ -281,7 +313,7 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
             </div>
 
             {/* Layout Configuration */}
-            <div className="absolute top-4 left-4 z-10">
+            <div className="absolute top-4 left-4 z-10 flex gap-2">
                 <Popover>
                     <PopoverTrigger asChild>
                         <Button variant="outline" size="sm" className="bg-white/90 backdrop-blur shadow-lg">
@@ -306,6 +338,7 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
                                             size="icon"
                                             onClick={() => setRows(Math.max(1, rows - 1))}
                                             disabled={rows <= 1}
+                                            className="flex-shrink-0"
                                         >
                                             <Minus className="w-4 h-4" />
                                         </Button>
@@ -316,13 +349,14 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
                                             max="26"
                                             value={rows}
                                             onChange={(e) => setRows(Math.min(26, Math.max(1, parseInt(e.target.value) || 1)))}
-                                            className="text-center"
+                                            className="text-center text-xl font-bold h-12 w-20 px-2"
                                         />
                                         <Button
                                             variant="outline"
                                             size="icon"
                                             onClick={() => setRows(Math.min(26, rows + 1))}
                                             disabled={rows >= 26}
+                                            className="flex-shrink-0"
                                         >
                                             <Plus className="w-4 h-4" />
                                         </Button>
@@ -336,6 +370,7 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
                                             size="icon"
                                             onClick={() => setCols(Math.max(1, cols - 1))}
                                             disabled={cols <= 1}
+                                            className="flex-shrink-0"
                                         >
                                             <Minus className="w-4 h-4" />
                                         </Button>
@@ -346,13 +381,14 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
                                             max="30"
                                             value={cols}
                                             onChange={(e) => setCols(Math.min(30, Math.max(1, parseInt(e.target.value) || 1)))}
-                                            className="text-center"
+                                            className="text-center text-xl font-bold h-12 w-20 px-2"
                                         />
                                         <Button
                                             variant="outline"
                                             size="icon"
                                             onClick={() => setCols(Math.min(30, cols + 1))}
                                             disabled={cols >= 30}
+                                            className="flex-shrink-0"
                                         >
                                             <Plus className="w-4 h-4" />
                                         </Button>
@@ -362,112 +398,116 @@ export function SeatMap({ guests, onAssignSeat, onUpdateGuestStatus, onUpdateGue
                             <Button onClick={handleApplyLayout} className="w-full">
                                 좌석 배치 생성
                             </Button>
-                            <p className="text-xs text-muted-foreground">
-                                총 좌석 수: {rows * cols}석
-                            </p>
+                            <div className="text-center p-3 bg-slate-50 rounded-lg border">
+                                <p className="text-sm font-medium text-slate-700">
+                                    총 좌석 수: <span className="text-lg font-bold text-primary">{rows * cols}</span>석
+                                </p>
+                            </div>
                         </div>
                     </PopoverContent>
                 </Popover>
             </div>
 
-            {/* Theater Layout */}
-            <div className="flex flex-col items-center justify-start pt-32 pb-20 min-h-full">
+            {/* Theater Layout - 반응형 스크롤 가능 */}
+            <div className="flex flex-col items-center justify-center min-h-full px-4 md:px-8">
                 {seats.length === 0 ? (
                     <div className="flex flex-col items-center justify-center gap-4 text-muted-foreground">
                         <Settings2 className="w-12 h-12" />
-                        <p className="text-sm">좌석 배치 설정을 클릭하여 좌석을 생성하세요</p>
+                        <p className="text-sm text-center">좌석 배치 설정을 클릭하여 좌석을 생성하세요</p>
                     </div>
                 ) : (
-                    <div className="space-y-1">
-                        {/* Screen */}
-                        <div className="mb-8 flex justify-center">
-                            <div className="w-full max-w-4xl h-2 bg-slate-800 rounded-t-3xl shadow-lg relative">
-                                <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-500 font-medium">
-                                    STAGE / 무대
-                                </span>
-                            </div>
-                        </div>
-
-                        {/* Seats Grid */}
-                        {Array.from({ length: rows }).map((_, rowIdx) => {
-                            const rowLabel = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rowIdx] || `R${rowIdx + 1}`;
-                            const rowSeats = seats.filter(s => s.row === rowLabel);
-
-                            return (
-                                <div key={rowLabel} className="flex items-center gap-2">
-                                    {/* Row Label */}
-                                    <div className="w-8 text-center font-bold text-slate-600 text-sm">
-                                        {rowLabel}
-                                    </div>
-
-                                    {/* Seats */}
-                                    <div className="flex gap-1">
-                                        {rowSeats.map((seat) => {
-                                            const guest = getSeatGuest(seat);
-                                            const isVip = guest?.type === 'vip';
-                                            const isArrived = guest?.status === 'arrived';
-                                            const isOccupied = !!guest;
-                                            const isDropTarget = dropTargetSeatId === seat.id;
-
-                                            return (
-                                                <button
-                                                    key={seat.id}
-                                                    disabled={seat.disabled}
-                                                    onClick={() => handleSeatClick(seat)}
-                                                    onDragOver={(e) => {
-                                                        if (draggedGuest) {
-                                                            e.preventDefault();
-                                                            setDropTargetSeatId(seat.id);
-                                                        }
-                                                    }}
-                                                    onDragLeave={() => {
-                                                        setDropTargetSeatId(null);
-                                                    }}
-                                                    onDrop={(e) => {
-                                                        e.preventDefault();
-                                                        setDropTargetSeatId(null);
-                                                        if (draggedGuest) {
-                                                            // 이전 좌석에서 제거
-                                                            setSeats(prevSeats =>
-                                                                prevSeats.map(s =>
-                                                                    s.guestId === draggedGuest.id ? { ...s, guestId: null } : s
-                                                                )
-                                                            );
-                                                            // 새 좌석에 배정
-                                                            setSeats(prevSeats =>
-                                                                prevSeats.map(s =>
-                                                                    s.id === seat.id ? { ...s, guestId: draggedGuest.id } : s
-                                                                )
-                                                            );
-                                                            // 부모 컴포넌트에 알림
-                                                            onAssignSeat(draggedGuest.id, seat.id);
-                                                        }
-                                                    }}
-                                                    className={cn(
-                                                        "w-9 h-9 rounded-md border-2 text-xs font-medium transition-all",
-                                                        "hover:scale-110 hover:shadow-md cursor-pointer",
-                                                        seat.disabled && "opacity-30 cursor-not-allowed",
-                                                        !seat.disabled && !isOccupied && "bg-slate-200 border-slate-300 hover:bg-slate-300",
-                                                        isOccupied && isArrived && "bg-emerald-500 border-emerald-500 text-white",
-                                                        isOccupied && !isArrived && "bg-slate-100 border-slate-400",
-                                                        isVip && "border-amber-400 ring-2 ring-amber-200",
-                                                        isDropTarget && draggedGuest && "ring-4 ring-blue-400 scale-110 bg-blue-100"
-                                                    )}
-                                                    title={guest ? `${guest.name} (${guest.organization})` : seat.id}
-                                                >
-                                                    {seat.col}
-                                                </button>
-                                            );
-                                        })}
-                                    </div>
-
-                                    {/* Row Label (Right) */}
-                                    <div className="w-8 text-center font-bold text-slate-600 text-sm">
-                                        {rowLabel}
-                                    </div>
+                    <div className="w-full overflow-x-auto flex justify-center py-20">
+                        <div className="inline-block space-y-1">
+                            {/* Screen */}
+                            <div className="mb-8 flex justify-center">
+                                <div className="w-full max-w-4xl h-2 bg-slate-800 rounded-t-3xl shadow-lg relative">
+                                    <span className="absolute -bottom-6 left-1/2 -translate-x-1/2 text-xs text-slate-500 font-medium">
+                                        STAGE / 무대
+                                    </span>
                                 </div>
-                            );
-                        })}
+                            </div>
+
+                            {/* Seats Grid */}
+                            {Array.from({ length: rows }).map((_, rowIdx) => {
+                                const rowLabel = "ABCDEFGHIJKLMNOPQRSTUVWXYZ"[rowIdx] || `R${rowIdx + 1}`;
+                                const rowSeats = seats.filter(s => s.row === rowLabel);
+
+                                return (
+                                    <div key={rowLabel} className="flex items-center gap-2">
+                                        {/* Row Label */}
+                                        <div className="w-8 text-center font-bold text-slate-600 text-sm">
+                                            {rowLabel}
+                                        </div>
+
+                                        {/* Seats */}
+                                        <div className="flex gap-1">
+                                            {rowSeats.map((seat) => {
+                                                const guest = getSeatGuest(seat);
+                                                const isVip = guest?.type === 'vip';
+                                                const isArrived = guest?.status === 'arrived';
+                                                const isOccupied = !!guest;
+                                                const isDropTarget = dropTargetSeatId === seat.id;
+
+                                                return (
+                                                    <button
+                                                        key={seat.id}
+                                                        disabled={seat.disabled}
+                                                        onClick={() => handleSeatClick(seat)}
+                                                        onDragOver={(e) => {
+                                                            if (draggedGuest) {
+                                                                e.preventDefault();
+                                                                setDropTargetSeatId(seat.id);
+                                                            }
+                                                        }}
+                                                        onDragLeave={() => {
+                                                            setDropTargetSeatId(null);
+                                                        }}
+                                                        onDrop={(e) => {
+                                                            e.preventDefault();
+                                                            setDropTargetSeatId(null);
+                                                            if (draggedGuest) {
+                                                                // 이전 좌석에서 제거
+                                                                setSeats(prevSeats =>
+                                                                    prevSeats.map(s =>
+                                                                        s.guestId === draggedGuest.id ? { ...s, guestId: null } : s
+                                                                    )
+                                                                );
+                                                                // 새 좌석에 배정
+                                                                setSeats(prevSeats =>
+                                                                    prevSeats.map(s =>
+                                                                        s.id === seat.id ? { ...s, guestId: draggedGuest.id } : s
+                                                                    )
+                                                                );
+                                                                // 부모 컴포넌트에 알림
+                                                                onAssignSeat(draggedGuest.id, seat.id);
+                                                            }
+                                                        }}
+                                                        className={cn(
+                                                            "w-9 h-9 rounded-md border-2 text-xs font-medium transition-all",
+                                                            "hover:scale-110 hover:shadow-md cursor-pointer",
+                                                            seat.disabled && "opacity-30 cursor-not-allowed",
+                                                            !seat.disabled && !isOccupied && "bg-slate-200 border-slate-300 hover:bg-slate-300",
+                                                            isOccupied && isArrived && "bg-emerald-500 border-emerald-500 text-white",
+                                                            isOccupied && !isArrived && "bg-slate-100 border-slate-400",
+                                                            isVip && "border-amber-400 ring-2 ring-amber-200",
+                                                            isDropTarget && draggedGuest && "ring-4 ring-blue-400 scale-110 bg-blue-100"
+                                                        )}
+                                                        title={guest ? `${guest.name} (${guest.organization})` : seat.id}
+                                                    >
+                                                        {seat.col}
+                                                    </button>
+                                                );
+                                            })}
+                                        </div>
+
+                                        {/* Row Label (Right) */}
+                                        <div className="w-8 text-center font-bold text-slate-600 text-sm">
+                                            {rowLabel}
+                                        </div>
+                                    </div>
+                                );
+                            })}
+                        </div>
                     </div>
                 )}
             </div>

@@ -30,9 +30,19 @@ function getGoogleSheetsClient() {
 function rowToEvent(row: any[]): Event | null {
   if (!row || row.length < 8) return null;
 
-  const [id, title, date, location, description, status, createdAt, updatedAt] = row;
+  const [id, title, date, location, description, status, createdAt, updatedAt, seatLayout] = row;
 
   if (!id || !title) return null;
+
+  // seatLayout JSON 파싱
+  let parsedSeatLayout = undefined;
+  if (seatLayout) {
+    try {
+      parsedSeatLayout = JSON.parse(seatLayout.toString());
+    } catch (e) {
+      console.warn(`좌석 배치도 파싱 실패 (Event ID: ${id}):`, e);
+    }
+  }
 
   return {
     id: id.toString(),
@@ -41,6 +51,7 @@ function rowToEvent(row: any[]): Event | null {
     location: location.toString(),
     description: description?.toString() || '',
     status: (status?.toString() as Event['status']) || 'upcoming',
+    seatLayout: parsedSeatLayout,
     createdAt: createdAt?.toString() || new Date().toISOString(),
     updatedAt: updatedAt?.toString() || new Date().toISOString(),
   };
@@ -87,7 +98,7 @@ export async function fetchEventsFromSheet(): Promise<Event[]> {
 
     const response = await sheets.spreadsheets.values.get({
       spreadsheetId,
-      range: 'Events!A2:H', // 헤더 제외, 2번째 행부터
+      range: 'Events!A2:I', // 헤더 제외, 2번째 행부터 (seatLayout 포함)
     });
 
     const rows = response.data.values || [];
@@ -154,11 +165,12 @@ export async function createEventInSheet(event: Event): Promise<void> {
       event.status,
       event.createdAt,
       event.updatedAt,
+      event.seatLayout ? JSON.stringify(event.seatLayout) : '', // seatLayout JSON 저장
     ];
 
     await sheets.spreadsheets.values.append({
       spreadsheetId,
-      range: 'Events!A:H',
+      range: 'Events!A:I',
       valueInputOption: 'RAW',
       requestBody: {
         values: [row],
@@ -198,11 +210,12 @@ export async function updateEventInSheet(eventId: string, updates: Partial<Event
       updatedEvent.status,
       updatedEvent.createdAt,
       updatedEvent.updatedAt,
+      updatedEvent.seatLayout ? JSON.stringify(updatedEvent.seatLayout) : '', // seatLayout JSON 저장
     ];
 
     await sheets.spreadsheets.values.update({
       spreadsheetId,
-      range: `Events!A${rowNumber}:H${rowNumber}`,
+      range: `Events!A${rowNumber}:I${rowNumber}`,
       valueInputOption: 'RAW',
       requestBody: {
         values: [row],
@@ -216,12 +229,23 @@ export async function updateEventInSheet(eventId: string, updates: Partial<Event
   }
 }
 
-// 행사 삭제
+// 행사 삭제 (내빈도 함께 삭제 - Cascade Delete)
 export async function deleteEventInSheet(eventId: string): Promise<void> {
   try {
     const { sheets, spreadsheetId } = getGoogleSheetsClient();
 
-    // 먼저 해당 행 찾기
+    // 1. 해당 행사의 모든 내빈 삭제
+    const allGuests = await fetchGuestsFromSheet();
+    const guestsToDelete = allGuests.filter((g) => g.eventId === eventId);
+
+    console.log(`🗑️ 행사 ${eventId}의 내빈 ${guestsToDelete.length}명을 삭제합니다...`);
+
+    // 내빈 삭제 (역순으로 삭제해야 인덱스가 안 꼬임)
+    for (const guest of guestsToDelete.reverse()) {
+      await deleteGuestInSheet(guest.id);
+    }
+
+    // 2. 행사 삭제
     const allEvents = await fetchEventsFromSheet();
     const eventIndex = allEvents.findIndex((e) => e.id === eventId);
 
@@ -261,7 +285,7 @@ export async function deleteEventInSheet(eventId: string): Promise<void> {
       },
     });
 
-    console.log(`✅ 행사 삭제 완료 (ID: ${eventId})`);
+    console.log(`✅ 행사 및 관련 내빈 삭제 완료 (ID: ${eventId}, 내빈 ${guestsToDelete.length}명)`);
   } catch (error: any) {
     console.error('❌ 행사 삭제 실패:', error.message);
     throw new Error(`Google Sheets 행사 삭제 오류: ${error.message}`);
@@ -300,6 +324,41 @@ export async function createGuestInSheet(guest: Guest): Promise<void> {
   } catch (error: any) {
     console.error('❌ 내빈 생성 실패:', error.message);
     throw new Error(`Google Sheets 내빈 생성 오류: ${error.message}`);
+  }
+}
+
+// 내빈 일괄 생성 (엑셀 업로드용)
+export async function createGuestsInSheetBulk(guests: Guest[]): Promise<void> {
+  try {
+    const { sheets, spreadsheetId } = getGoogleSheetsClient();
+
+    const rows = guests.map(guest => [
+      guest.id,
+      guest.eventId,
+      guest.name,
+      guest.organization || '',
+      guest.position || '',
+      guest.seatNumber || '',
+      guest.status,
+      guest.type,
+      guest.biography || '',
+      guest.protocolNotes?.join(', ') || '',
+      guest.updatedAt,
+    ]);
+
+    await sheets.spreadsheets.values.append({
+      spreadsheetId,
+      range: 'Guests!A:K',
+      valueInputOption: 'RAW',
+      requestBody: {
+        values: rows,
+      },
+    });
+
+    console.log(`✅ ${guests.length}명의 내빈 일괄 생성 완료`);
+  } catch (error: any) {
+    console.error('❌ 내빈 일괄 생성 실패:', error.message);
+    throw new Error(`Google Sheets 내빈 일괄 생성 오류: ${error.message}`);
   }
 }
 

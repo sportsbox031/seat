@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
 import {
     Dialog,
@@ -22,9 +24,11 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 interface UploadDialogProps {
     onGuestsImport?: (guests: Guest[], gridSize?: { rows: number; cols: number; rowLabels: string[] }) => void;
+    eventId: string; // 현재 행사 ID
 }
 
-export function UploadDialog({ onGuestsImport }: UploadDialogProps) {
+export function UploadDialog({ onGuestsImport, eventId }: UploadDialogProps) {
+    const queryClient = useQueryClient();
     const [file, setFile] = useState<File | null>(null);
     const [isUploading, setIsUploading] = useState(false);
     const [isSuccess, setIsSuccess] = useState(false);
@@ -33,6 +37,35 @@ export function UploadDialog({ onGuestsImport }: UploadDialogProps) {
     const [open, setOpen] = useState(false);
     const [autoGenerateSeats, setAutoGenerateSeats] = useState(true);
     const [seatLayoutInfo, setSeatLayoutInfo] = useState<string | null>(null);
+
+    // 내빈 일괄 생성 mutation
+    const bulkCreateMutation = useMutation({
+        mutationFn: async (guests: Guest[]) => {
+            const response = await fetch('/api/guests/bulk', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ guests }),
+            });
+            if (!response.ok) {
+                const errorData = await response.json();
+                throw new Error(errorData.error || 'Failed to create guests');
+            }
+            return response.json();
+        },
+        onSuccess: (data) => {
+            // 내빈 목록 새로고침
+            queryClient.invalidateQueries({ queryKey: ['guests', eventId] });
+            queryClient.invalidateQueries({ queryKey: ['all-guests'] });
+            toast.success('내빈 명단 업로드 완료', {
+                description: `${data.count}명의 내빈이 Google Sheets에 저장되었습니다`,
+            });
+        },
+        onError: (error: Error) => {
+            toast.error('업로드 실패', {
+                description: error.message,
+            });
+        },
+    });
 
     const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
         if (e.target.files && e.target.files[0]) {
@@ -55,13 +88,46 @@ export function UploadDialog({ onGuestsImport }: UploadDialogProps) {
 
         try {
             // 엑셀 파일 파싱
-            const guests = await parseGuestExcel(file);
+            const parsedGuests = await parseGuestExcel(file);
 
-            if (guests.length === 0) {
+            if (parsedGuests.length === 0) {
                 setError('유효한 데이터가 없습니다. 엑셀 파일을 확인해주세요.');
                 setIsUploading(false);
                 return;
             }
+
+            // 필수 필드 검증
+            const invalidGuests = parsedGuests.filter(
+                (g) => !g.name?.trim() || !g.organization?.trim() || !g.position?.trim()
+            );
+
+            if (invalidGuests.length > 0) {
+                setError(`필수 필드 누락: ${invalidGuests.length}개 행에 이름, 소속, 직책 정보가 누락되어 있습니다.`);
+                setIsUploading(false);
+                return;
+            }
+
+            // 파일 내 중복 체크
+            const names = parsedGuests.map((g) => `${g.name.trim()}-${g.organization.trim()}`);
+            const duplicates = names.filter((name, index) => names.indexOf(name) !== index);
+
+            if (duplicates.length > 0) {
+                setError(`중복 데이터 발견: 엑셀 파일 내에 ${duplicates.length}개의 중복된 내빈이 있습니다.`);
+                setIsUploading(false);
+                return;
+            }
+
+            // eventId 추가 및 ID/타임스탬프 생성
+            const guests = parsedGuests.map(guest => ({
+                ...guest,
+                name: guest.name.trim(),
+                organization: guest.organization.trim(),
+                position: guest.position.trim(),
+                biography: guest.biography?.trim() || '',
+                id: `guest-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+                eventId: eventId,
+                updatedAt: new Date().toISOString(),
+            }));
 
             let gridSize: { rows: number; cols: number; rowLabels: string[] } | undefined = undefined;
 
@@ -79,7 +145,10 @@ export function UploadDialog({ onGuestsImport }: UploadDialogProps) {
                 }
             }
 
-            // 부모 컴포넌트로 데이터 전달
+            // Google Sheets에 저장
+            await bulkCreateMutation.mutateAsync(guests);
+
+            // 부모 컴포넌트로 데이터 전달 (로컬 상태 업데이트용)
             if (onGuestsImport) {
                 onGuestsImport(guests, gridSize);
             }

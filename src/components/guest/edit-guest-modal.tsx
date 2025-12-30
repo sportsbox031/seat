@@ -142,6 +142,19 @@ export function EditGuestModal({ guest, open, onOpenChange, onSave }: EditGuestM
                     </div>
 
                     <div className="space-y-2">
+                        <Label htmlFor="seatNumber">좌석 번호</Label>
+                        <Input
+                            id="seatNumber"
+                            placeholder="예: A-1, B-3, C-10"
+                            value={formData.seatNumber || ""}
+                            onChange={(e) => setFormData({ ...formData, seatNumber: e.target.value })}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                            좌석 배치도에서 드래그 앤 드롭으로도 배정할 수 있습니다
+                        </p>
+                    </div>
+
+                    <div className="space-y-2">
                         <Label htmlFor="biography">내빈 정보 / 의전 메모</Label>
                         <Textarea
                             id="biography"
