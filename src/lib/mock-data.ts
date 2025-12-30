@@ -1,10 +1,44 @@
-import { Guest } from "@/types";
+import { Event, Guest } from "@/types";
 
 const baseTime = "2025-12-26T10:00:00.000Z";
+
+export const MOCK_EVENTS: Event[] = [
+    {
+        id: "event-1",
+        title: "2025 경기도 체육대상 시상식",
+        date: "2025-01-15T14:00:00.000Z",
+        location: "경기도청 대강당",
+        description: "2024년 우수 체육인 및 단체 시상",
+        status: "upcoming",
+        createdAt: baseTime,
+        updatedAt: baseTime,
+    },
+    {
+        id: "event-2",
+        title: "경기도 생활체육대회",
+        date: "2025-02-20T09:00:00.000Z",
+        location: "수원종합운동장",
+        description: "도민 생활체육 활성화를 위한 종합대회",
+        status: "upcoming",
+        createdAt: baseTime,
+        updatedAt: baseTime,
+    },
+    {
+        id: "event-3",
+        title: "제100회 전국체육대회 준비위원회",
+        date: "2024-12-20T10:00:00.000Z",
+        location: "경기도체육회관",
+        description: "전국체전 유치 준비 회의",
+        status: "completed",
+        createdAt: "2024-11-01T10:00:00.000Z",
+        updatedAt: "2024-12-20T15:00:00.000Z",
+    },
+];
 
 export const MOCK_GUESTS: Guest[] = [
     {
         id: "g1",
+        eventId: "event-1",
         name: "김철수",
         organization: "경기도청",
         position: "도지사",
@@ -17,6 +51,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g2",
+        eventId: "event-1",
         name: "이영희",
         organization: "대한체육회",
         position: "사무총장",
@@ -27,6 +62,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g3",
+        eventId: "event-1",
         name: "박광민",
         organization: "경기도체육회",
         position: "과장",
@@ -38,6 +74,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g4",
+        eventId: "event-1",
         name: "최민수",
         organization: "수원시청",
         position: "시장",
@@ -48,6 +85,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g5",
+        eventId: "event-1",
         name: "홍길동",
         organization: "화성시체육회",
         position: "회장",
@@ -60,6 +98,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g6",
+        eventId: "event-1",
         name: "강감찬",
         organization: "용인시청",
         position: "부시장",
@@ -70,6 +109,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g7",
+        eventId: "event-1",
         name: "신사임당",
         organization: "안산시체육회",
         position: "이사",
@@ -80,6 +120,7 @@ export const MOCK_GUESTS: Guest[] = [
     },
     {
         id: "g8",
+        eventId: "event-1",
         name: "이순신",
         organization: "부천시청",
         position: "체육과장",

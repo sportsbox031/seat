@@ -1,8 +1,20 @@
 export type GuestStatus = "arrived" | "not_arrived" | "cancelled";
 export type GuestType = "vip" | "regular" | "staff" | "press";
 
+export interface Event {
+    id: string;
+    title: string;
+    date: string; // ISO 8601 date string
+    location: string;
+    description?: string;
+    status: "upcoming" | "ongoing" | "completed";
+    createdAt: string;
+    updatedAt: string;
+}
+
 export interface Guest {
     id: string;
+    eventId: string; // 행사 ID 추가
     name: string;
     organization: string;
     position: string;
